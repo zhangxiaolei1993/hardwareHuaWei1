@@ -1,0 +1,23 @@
+# IDE
+.idea/
+.vscode/
+
+# 独立练习项目（不属于本仓库）
+pythonProject1/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# 临时部署/基准测试脚本（用后即删）
+_*.py
+
+# 运行产物
+output/
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store

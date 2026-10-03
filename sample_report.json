@@ -1,0 +1,56 @@
+{
+  "session_start": "2026-10-03 10:33:47",
+  "session_end": "2026-10-03 10:33:58",
+  "elapsed_seconds": 10.1,
+  "video_frames": 253,
+  "display_fps": 25.0,
+  "face_detected_frames": 60,
+  "face_coverage_percent": 23.7,
+  "face_detect_runs": 44,
+  "inference_runs": 9,
+  "valid_expression_seconds": 9.7,
+  "dominant_expression": "neutral",
+  "average_confidence": 0.744,
+  "expressions": [
+    {
+      "expression": "neutral",
+      "seconds": 9.71,
+      "percentage": 100.0
+    },
+    {
+      "expression": "happiness",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "surprise",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "sadness",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "anger",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "disgust",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "fear",
+      "seconds": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "expression": "contempt",
+      "seconds": 0.0,
+      "percentage": 0.0
+    }
+  ]
+}
