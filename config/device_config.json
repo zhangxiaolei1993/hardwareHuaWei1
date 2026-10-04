@@ -1,0 +1,22 @@
+{
+  "server_base_url": "http://8.140.240.43:8000",
+  "device_id": "atlas_001",
+  "device_name": "心理测评设备01",
+  "device_type": "edge_ai_device",
+  "manufacturer": "Huawei",
+  "model": "Atlas 200I DK A2",
+  "firmware_version": "1.0.0",
+  "capabilities": ["emotion"],
+  "heartbeat_interval": 20,
+  "http_timeout": 8,
+  "upload_max_retries": 5,
+  "camera_index": 0,
+  "width": 640,
+  "height": 480,
+  "rotate": 0,
+  "mirror": false,
+  "sample_fps": 5.0,
+  "infer_interval": 0.5,
+  "token_file": "config/device_token.json",
+  "log_file": "logs/cloud_device.log"
+}

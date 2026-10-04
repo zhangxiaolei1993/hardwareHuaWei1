@@ -11,12 +11,16 @@ __pycache__/
 venv/
 .venv/
 
-# 临时部署/基准测试脚本（用后即删）
-_*.py
+# 临时部署/基准测试脚本（用后即删，仅根目录）
+/_*.py
 
 # 运行产物
 output/
+logs/
 *.log
+
+# 设备密钥（注册 token，严禁入库）
+config/device_token.json
 
 # 系统文件
 Thumbs.db
