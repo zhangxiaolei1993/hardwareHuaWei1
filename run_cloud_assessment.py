@@ -34,6 +34,7 @@ from expression_recognizer import ExpressionRecognizer
 from cloud.device_config import AppConfig, DEFAULT_CONFIG, setup_logging
 from cloud.cloud_client import CloudClient, CloudAPIError, CloudValidationError
 from cloud.heartbeat import HeartbeatThread
+from cloud.status_reporter import StatusReporter
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -150,6 +151,15 @@ def main():
     last_box_ok_t = 0.0
     last_print_t = t0
     sample_period = 1.0 / max(sample_fps, 0.1)
+    # 实时状态：最近一次成功推理的表情/置信度；超过该时长未刷新则视为"无有效表情"(情况B)
+    last_expr, last_conf, last_expr_t = None, None, 0.0
+    expr_stale = max(1.0, infer_interval * 2)
+
+    # 实时状态上报线程：注册完成、进入采集时才启动；与 20s 心跳完全独立
+    reporter = StatusReporter(client, interval=cfg.status_interval,
+                              timeout=cfg.status_timeout)
+    reporter.start()
+    log.info("实时状态上报已开启（每 %.0fs 一次）", cfg.status_interval)
 
     log.info("开始测评（采样 %.1fHz / 推理 %.1fHz / %s）",
              sample_fps, 1.0 / infer_interval,
@@ -183,6 +193,14 @@ def main():
             if cached_box is not None:
                 face_frames += 1
 
+            # 实时状态（每帧计算，仅写内存，由 StatusReporter 线程每 3s 读最新值）
+            # 先按"推理之前"的事实发布：人脸已在但本帧尚无有效表情 -> 情况 B
+            face_now = cached_box is not None
+            if not face_now:
+                reporter.update(False, False)  # 情况 A：无人脸
+            elif last_expr is None or (now - last_expr_t) > expr_stale:
+                reporter.update(True, False)   # 情况 B：人脸在，表情结果尚未得到
+
             if cached_box is not None and now - last_infer_t >= infer_interval:
                 x, y, w, h = cached_box
                 face_img = frame[y:y + h, x:x + w]
@@ -203,13 +221,18 @@ def main():
                 })
                 infer_runs += 1
                 last_infer_t = now
+                last_expr = ExpressionRecognizer.LABELS[idx]
+                last_conf = float(probs[idx])
+                last_expr_t = now
+                # 情况 C：本帧已得到有效表情，覆盖前面的 B
+                reporter.update(True, True, last_expr, last_conf)
 
             if now - last_print_t >= 5.0:
                 last_print_t = now
                 cur = timeline[-1]["expression"] if timeline else "-"
-                log.info("[%5.1fs] 帧=%d 人脸帧=%d 推理=%d 当前=%s 心跳ok=%d",
+                log.info("[%5.1fs] 帧=%d 人脸帧=%d 推理=%d 当前=%s 心跳ok=%d 状态上报ok=%d/失败%d",
                          now - t0, video_frames, face_frames, infer_runs, cur,
-                         hb.beats_ok)
+                         hb.beats_ok, reporter.sent_ok, reporter.sent_fail)
 
             if args.duration > 0 and (now - t0) >= args.duration:
                 break
@@ -221,6 +244,9 @@ def main():
         log.info("Ctrl-C 中断，准备上传...")
     finally:
         cap.release()
+        # 采集停止即停止实时上报（在批量上传之前，两者互不干扰）
+        reporter.stop()
+        reporter.join(timeout=3)
 
     wall_end = datetime.now()
     elapsed = time.time() - t0

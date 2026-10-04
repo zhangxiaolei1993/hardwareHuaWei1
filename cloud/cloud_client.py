@@ -62,9 +62,10 @@ class CloudClient:
         return h
 
     def _request(self, method, path, auth=True, json_body=None,
-                 max_retries=None, action="请求"):
-        """带重试的请求；返回解析后的 JSON dict。"""
+                 max_retries=None, action="请求", timeout=None):
+        """带重试的请求；返回解析后的 JSON dict。timeout 可覆盖默认值。"""
         retries = self.max_retries if max_retries is None else max_retries
+        req_timeout = self.timeout if timeout is None else timeout
         url = self._url(path)
         last_exc = None
         for attempt in range(1, retries + 2):  # 首次 + retries 次重试
@@ -73,7 +74,7 @@ class CloudClient:
                     method, url,
                     headers=self._headers(auth),
                     json=json_body,
-                    timeout=self.timeout,
+                    timeout=req_timeout,
                 )
             except requests.RequestException as e:
                 last_exc = e
@@ -159,6 +160,52 @@ class CloudClient:
         return self._request(
             "GET", f"/api/v1/emotion/sessions/{session_id}/result",
             action="查询测评结果")
+
+    # ---------------- 实时表情状态（设备级，约 3s 一次，不重试） ----------------
+    def put_emotion_status(self, face_detected, expression_detected,
+                           current_expression=None, confidence=None,
+                           timeout=None):
+        """上报当前实时表情状态 PUT /emotion/devices/{id}/status。
+
+        - 情况 A：无人脸 -> (False, False, None, None)
+        - 情况 B：有人脸但暂无有效表情 -> (True, False, None, None)
+        - 情况 C：有效识别 -> (True, True, 8类标签, 0~1)
+        实时信号不做重试（max_retries=0）：失败由上报线程跳过本拍，等下一节拍。
+        """
+        face_detected = bool(face_detected)
+        expression_detected = bool(expression_detected)
+        if expression_detected:
+            if current_expression not in VALID_EXPRESSIONS:
+                raise ValueError(
+                    f"current_expression 非法: {current_expression!r}，"
+                    f"必须是 8 类之一: {sorted(VALID_EXPRESSIONS)}")
+            if (not isinstance(confidence, (int, float))
+                    or isinstance(confidence, bool)
+                    or not (0.0 <= float(confidence) <= 1.0)):
+                raise ValueError(f"confidence 越界: {confidence!r}（应为 0~1）")
+            body = {
+                "face_detected": True,
+                "expression_detected": True,
+                "current_expression": current_expression,
+                "confidence": round(float(confidence), 4),
+            }
+        else:
+            # 云端规则：expression_detected=false 时即使本地带了值也会被清空
+            body = {
+                "face_detected": face_detected,
+                "expression_detected": False,
+                "current_expression": None,
+                "confidence": None,
+            }
+        return self._request(
+            "PUT", f"/api/v1/emotion/devices/{self.device_id}/status",
+            json_body=body, max_retries=0,
+            timeout=timeout, action="实时状态上报")
+
+    def get_emotion_status(self):
+        return self._request(
+            "GET", f"/api/v1/emotion/devices/{self.device_id}/status",
+            max_retries=1, action="查询实时状态")
 
 
 def validate_timeline(timeline):

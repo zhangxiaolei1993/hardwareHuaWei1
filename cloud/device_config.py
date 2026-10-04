@@ -33,6 +33,9 @@ class AppConfig:
         self.heartbeat_interval = float(cfg.get("heartbeat_interval", 20))
         self.http_timeout = float(cfg.get("http_timeout", 8))
         self.upload_max_retries = int(cfg.get("upload_max_retries", 5))
+        # 实时表情状态上报（设备级，与 20s 心跳独立；只在采集期间运行）
+        self.status_interval = float(cfg.get("status_interval", 3.0))
+        self.status_timeout = float(cfg.get("status_timeout", 2.5))
         self.camera_index = int(cfg.get("camera_index", 0))
         self.width = int(cfg.get("width", 640))
         self.height = int(cfg.get("height", 480))
