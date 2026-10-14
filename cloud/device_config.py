@@ -36,6 +36,9 @@ class AppConfig:
         # 实时表情状态上报（设备级，与 20s 心跳独立；只在采集期间运行）
         self.status_interval = float(cfg.get("status_interval", 3.0))
         self.status_timeout = float(cfg.get("status_timeout", 2.5))
+        # 活跃会话轮询（设备级常驻；免认证、短超时，与 20s 心跳独立）
+        self.session_poll_interval = float(cfg.get("session_poll_interval", 2.0))
+        self.session_poll_timeout = float(cfg.get("session_poll_timeout", 2.5))
         self.camera_index = int(cfg.get("camera_index", 0))
         self.width = int(cfg.get("width", 640))
         self.height = int(cfg.get("height", 480))

@@ -25,3 +25,8 @@ config/device_token.json
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 临时Windows脚本和驱动包
+_*.ps1
+_*.zip
+

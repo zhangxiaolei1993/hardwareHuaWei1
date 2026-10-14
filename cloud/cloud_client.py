@@ -47,6 +47,8 @@ class CloudClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.s = requests.Session()
+        # 云服务器直连可达，禁用系统/环境代理，避免终端残留的 http_proxy 导致业务请求失败
+        self.s.trust_env = False
 
     def set_token(self, token):
         self.token = token
@@ -133,6 +135,19 @@ class CloudClient:
             "user_id": user_id,
             "session_type": session_type,
         }, action="创建会话")
+
+    def get_active_session(self, timeout=None):
+        """查询当前活跃会话（免认证）：手机端创建的 created/running 会话。
+
+        返回 dict: {device_id, session_id(或None), session_type(或None),
+                    status(或None)}。
+        轮询专用：不重试（max_retries=0），由轮询线程按自己的节拍处理失败，
+        避免长重试占住线程。
+        """
+        return self._request(
+            "GET", f"/api/v1/devices/{self.device_id}/active-session",
+            auth=False, max_retries=0,
+            timeout=timeout, action="轮询活跃会话")
 
     def update_session_status(self, session_id, status):
         return self._request(
