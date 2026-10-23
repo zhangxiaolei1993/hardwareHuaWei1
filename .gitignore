@@ -2,9 +2,6 @@
 .idea/
 .vscode/
 
-# 独立练习项目（不属于本仓库）
-pythonProject1/
-
 # Python
 __pycache__/
 *.py[cod]

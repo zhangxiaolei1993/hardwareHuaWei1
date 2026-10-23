@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """设备配置与 token 持久化。
 
 - 所有连接参数（服务器地址、device_id、心跳间隔、摄像头参数等）放在
@@ -42,6 +42,14 @@ class AppConfig:
         self.camera_index = int(cfg.get("camera_index", 0))
         self.width = int(cfg.get("width", 640))
         self.height = int(cfg.get("height", 480))
+        # 人脸检测器：yunet（NPU，10.5ms）优先，OM 缺失时自动回退 haar
+        self.face_detector = str(cfg.get("face_detector", "yunet"))
+        self.yunet_model = self._abs(cfg.get("yunet_model", "models/yunet_640.om"))
+        # Haar 检测缩放长边（仅回退方案使用）
+        self.detect_target = int(cfg.get("detect_target", 384))
+        # 人脸框扩边比例。YuNet 框本身略松，0.05 即够；Haar 框紧贴五官需 0.15
+        def_pad = 0.05 if self.face_detector == "yunet" else 0.15
+        self.face_padding = float(cfg.get("face_padding", def_pad))
         self.rotate = int(cfg.get("rotate", 0))
         self.mirror = bool(cfg.get("mirror", False))
         self.sample_fps = float(cfg.get("sample_fps", 5.0))

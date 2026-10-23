@@ -1,4 +1,4 @@
-"""
+﻿"""
 昇腾 NPU 表情识别模块
 基于 FER+ 模型和 Ascend ACL 推理
 """
@@ -8,6 +8,8 @@ import cv2
 import aclruntime
 from aclruntime import InferenceSession
 
+from camera_util import open_camera
+
 
 class ExpressionRecognizer:
     """表情识别器 - 基于昇腾 NPU 加速"""
@@ -15,7 +17,9 @@ class ExpressionRecognizer:
     # FER+ 8 类表情标签
     LABELS = ["neutral", "happiness", "surprise", "sadness", "anger", "disgust", "fear", "contempt"]
 
-    def __init__(self, model_path, device_id=0, input_size=64):
+    def __init__(self, model_path, device_id=0, input_size=64,
+                 detect_target=384, face_padding=0.15,
+                 detector='yunet', yunet_model=None):
         """
         初始化表情识别器
 
@@ -23,28 +27,47 @@ class ExpressionRecognizer:
             model_path: OM 模型文件路径
             device_id: NPU 设备 ID (默认 0)
             input_size: 模型输入尺寸 (默认 64x64)
+            detect_target: Haar 检测缩放后的长边像素（仅在 YuNet 不可用时使用）
+            face_padding: 人脸框扩边比例。YuNet 框本身已略松，默认值应按
+                检测器调整；Haar 框紧贴五官，需 0.15 左右扩边
+            detector: 'yunet' 优先用 NPU YuNet，失败回退 Haar
+            yunet_model: YuNet OM 路径，None 时按 models/yunet_640.om 推导
         """
         self.model_path = model_path
         self.device_id = device_id
         self.input_size = input_size
+        self.detect_target = detect_target
+        self.face_padding = face_padding
 
-        # 加载人脸检测器 (OpenCV Haar)
-        self.face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        )
-
-        # 初始化昇腾推理会话
+        # 初始化昇腾推理会话（表情）
         options = aclruntime.session_options()
         self.session = InferenceSession(model_path, device_id, options)
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
 
+        # 人脸检测：优先 NPU YuNet（10.5ms），不可用时回退 Haar
+        self.yunet = None
+        self.face_cascade = None
+        if yunet_model is None:
+            yunet_model = os.path.join(os.path.dirname(os.path.abspath(model_path)),
+                                       'yunet_640.om')
+        if detector == 'yunet' and os.path.exists(yunet_model):
+            try:
+                from yunet_detector import YuNetDetector
+                self.yunet = YuNetDetector(yunet_model, device_id=device_id)
+            except Exception as e:
+                print('[WARN] YuNet 初始化失败，回退 Haar: %s' % e)
+        if self.yunet is None:
+            self.face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            )
+
     def detect_face(self, image):
         """
-        检测图像中的人脸（在缩小图上检测以提速，坐标映射回原图）
+        检测图像中最大的人脸
 
-        实测：640x480 全分辨率 Haar 约 135ms，
-        缩到约 320 宽 + 快速参数仅约 12ms，提速约 10 倍。
+        YuNet 走 NPU（640 输入，单次约 10.5ms），Haar 为回退方案
+        （在缩小图上检测，720p 下约 36ms）。
 
         Args:
             image: BGR 格式的 OpenCV 图像
@@ -52,11 +75,14 @@ class ExpressionRecognizer:
         Returns:
             原图坐标下的人脸区域 (x, y, w, h) 或 None
         """
+        if self.yunet is not None:
+            box, _score = self.yunet.detect(image)
+            return box
+
         h, w = image.shape[:2]
-        # 长边缩到 256 左右做人脸检测；太小的图直接用原图。
-        # 实测 256 宽 + sf=1.2 单次约 25ms（320 宽 + sf=1.1 需 62ms），
-        # 检出率在逆光侧脸样本上与更慢参数基本一致。
-        target_w = 256
+        # 长边缩到 detect_target 做人脸检测；太小的图直接用原图。
+        # 实测 720p 下：target=256 约 13ms、384 约 36ms、512 约 55ms。
+        target_w = self.detect_target
         if w > target_w:
             scale = target_w / float(w)
             small = cv2.resize(image, (target_w, int(round(h * scale))))
@@ -80,6 +106,32 @@ class ExpressionRecognizer:
         inv = 1.0 / scale
         return (int(round(fx * inv)), int(round(fy * inv)),
                 int(round(fw * inv)), int(round(fh * inv)))
+
+    def expand_box(self, box, shape, pad=None):
+        """
+        按比例扩边人脸框，并裁剪到图像范围内。
+
+        Haar 检出的框通常紧贴五官，而 FER+ 训练样本包含更多额头/下巴。
+        扩边后再缩放到 64x64，输入分布更接近训练集，是提升准确率的
+        低成本手段（不增加任何推理开销）。
+
+        Args:
+            box: 人脸框 (x, y, w, h)，原图坐标
+            shape: 图像 shape（用于边界裁剪）
+            pad: 扩边比例，None 时用 self.face_padding
+
+        Returns:
+            扩边后的 (x, y, w, h)
+        """
+        pad = self.face_padding if pad is None else pad
+        if not pad or pad <= 0:
+            return box
+        x, y, w, h = box
+        dx, dy = int(round(w * pad)), int(round(h * pad))
+        ih, iw = shape[:2]
+        x0, y0 = max(0, x - dx), max(0, y - dy)
+        x1, y1 = min(iw, x + w + dx), min(ih, y + h + dy)
+        return (x0, y0, x1 - x0, y1 - y0)
 
     def preprocess(self, face_img):
         """
@@ -148,8 +200,9 @@ class ExpressionRecognizer:
             result['message'] = 'No face detected'
             return result
 
-        x, y, w, h = face_box
-        face_img = image[y:y + h, x:x + w]
+        # 检测框扩边后再裁图：Haar 框偏紧，扩边使输入分布更接近 FER+ 训练集
+        bx, by, bw, bh = self.expand_box(face_box, image.shape)
+        face_img = image[by:by + bh, bx:bx + bw]
 
         # 预处理
         input_tensor = self.preprocess(face_img)
@@ -174,7 +227,8 @@ class ExpressionRecognizer:
             'expression': pred,
             'confidence': conf,
             'probabilities': probs,
-            'face_box': (int(x), int(y), int(w), int(h)),
+            'face_box': (int(face_box[0]), int(face_box[1]),
+                         int(face_box[2]), int(face_box[3])),
             'message': 'OK'
         })
         return result
@@ -212,7 +266,7 @@ class ExpressionRecognizer:
         Returns:
             最后预测结果
         """
-        cap = cv2.VideoCapture(camera_id)
+        cap = open_camera(camera_id, 1280, 720)
         if not cap.isOpened():
             return {'success': False, 'message': f'Cannot open camera {camera_id}'}
 

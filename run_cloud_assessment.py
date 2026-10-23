@@ -39,6 +39,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime
 
 import cv2
@@ -46,6 +47,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import aclruntime
+from camera_util import open_camera
 from expression_recognizer import ExpressionRecognizer
 from cloud.device_config import AppConfig, DEFAULT_CONFIG, setup_logging
 from cloud.cloud_client import CloudClient, CloudAPIError, CloudValidationError
@@ -104,6 +106,7 @@ def run_one_assessment(cfg, client, log, recognizer, cap, watcher, hb,
     wall_start = datetime.now()
     last_infer_t = 0.0
     cached_box = None
+    prob_hist = deque(maxlen=5)  # 多帧概率平滑窗口
     last_box_ok_t = 0.0
     last_print_t = t0
     sample_period = 1.0 / max(sample_fps, 0.1)
@@ -157,8 +160,9 @@ def run_one_assessment(cfg, client, log, recognizer, cap, watcher, hb,
                 reporter.update(True, False)   # 情况 B
 
             if cached_box is not None and now - last_infer_t >= infer_interval:
-                x, y, w, h = cached_box
-                face_img = frame[y:y + h, x:x + w]
+                # 检测框扩边后再裁剪：Haar 框偏紧，扩边后更接近 FER+ 训练分布
+                bx, by, bw, bh = recognizer.expand_box(cached_box, frame.shape)
+                face_img = frame[by:by + bh, bx:bx + bw]
                 inp = recognizer.preprocess(face_img)
                 outputs = recognizer.session.run(
                     [recognizer.output_name],
@@ -166,7 +170,9 @@ def run_one_assessment(cfg, client, log, recognizer, cap, watcher, hb,
                 out_t = outputs[0]
                 out_t.to_host()
                 logits = np.array(out_t)[0]
-                probs = np.exp(logits) / np.sum(np.exp(logits))
+                prob_hist.append(np.exp(logits) / np.sum(np.exp(logits)))
+                # 多帧概率平均：抑制单帧误判，表情序列更稳定
+                probs = np.mean(prob_hist, axis=0)
                 idx = int(np.argmax(probs))
                 timeline.append({
                     "relative_seconds": round(max(0.0, now - t0), 3),
@@ -309,6 +315,9 @@ def main():
     cam_args = {
         "sample_fps": sample_fps,
         "infer_interval": infer_interval,
+        "detect_target": cfg.detect_target,
+        "face_padding": cfg.face_padding,
+        "face_detector": cfg.face_detector,
         "rotate": args.rotate if args.rotate is not None else cfg.rotate,
         "mirror": args.mirror or cfg.mirror,
     }
@@ -344,9 +353,13 @@ def main():
     # 3) NPU 与摄像头只初始化一次，常驻期间反复服务多次测评
     model_path = os.path.join(PROJECT_ROOT, "models", "emotion-ferplus.om")
     log.info("加载 NPU 模型 %s ...", model_path)
-    recognizer = ExpressionRecognizer(model_path, device_id=0)
+    recognizer = ExpressionRecognizer(model_path, device_id=0,
+                                      detect_target=cfg.detect_target,
+                                      face_padding=cfg.face_padding,
+                                      detector=cfg.face_detector,
+                                      yunet_model=cfg.yunet_model)
 
-    cap = cv2.VideoCapture(cam_idx)
+    cap = open_camera(cam_idx, width, height)
     if not cap.isOpened():
         log.error("无法打开摄像头 /dev/video%s", cam_idx)
         hb.stop()

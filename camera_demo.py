@@ -27,6 +27,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from expression_recognizer import ExpressionRecognizer
+from camera_util import open_camera
 
 # 英文标签，避免 OpenCV putText 中文乱码
 LABEL_EN = {
@@ -82,8 +83,8 @@ def main():
     parser = argparse.ArgumentParser(description="摄像头实时表情识别（昇腾 NPU）")
     parser.add_argument("--camera", type=int, default=0, help="摄像头设备 ID")
     parser.add_argument("--model", default=None, help="OM 模型路径")
-    parser.add_argument("--width", type=int, default=640, help="采集宽度")
-    parser.add_argument("--height", type=int, default=480, help="采集高度")
+    parser.add_argument("--width", type=int, default=1280, help="采集宽度")
+    parser.add_argument("--height", type=int, default=720, help="采集高度")
     parser.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                         help="摄像头物理方向校正角度（默认 0；画面上下颠倒时用 180）")
     parser.add_argument("--mirror", action="store_true", help="校正后再水平镜像")
@@ -96,7 +97,7 @@ def main():
     recognizer = ExpressionRecognizer(model_path, device_id=0)
     print("模型加载完成")
 
-    cap = cv2.VideoCapture(args.camera)
+    cap = open_camera(args.camera, args.width, args.height)
     if not cap.isOpened():
         print(f"错误：无法打开摄像头 /dev/video{args.camera}")
         print("请检查：1) USB 摄像头是否插好  2) 设备 ID 是否正确（ls /dev/video*）")

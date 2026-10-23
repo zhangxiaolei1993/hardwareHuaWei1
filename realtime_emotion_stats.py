@@ -34,6 +34,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from expression_recognizer import ExpressionRecognizer
+from camera_util import open_camera
 
 
 class FaceDetectorThread(threading.Thread):
@@ -260,8 +261,8 @@ def main():
     ap = argparse.ArgumentParser(description="实时表情识别 + 时段统计（昇腾 NPU）")
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--model", default=None)
-    ap.add_argument("--width", type=int, default=640)
-    ap.add_argument("--height", type=int, default=480)
+    ap.add_argument("--width", type=int, default=1280)
+    ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                     help="摄像头物理方向校正角度（默认 0；画面上下颠倒时用 180）")
     ap.add_argument("--mirror", action="store_true",
@@ -303,7 +304,7 @@ def main():
     print("加载 NPU 模型...")
     recognizer = ExpressionRecognizer(model_path, device_id=0)
 
-    cap = cv2.VideoCapture(args.camera)
+    cap = open_camera(args.camera, args.width, args.height)
     if not cap.isOpened():
         print(f"错误：无法打开摄像头 /dev/video{args.camera}")
         return 1

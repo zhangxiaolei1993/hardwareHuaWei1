@@ -1,4 +1,4 @@
-{
+﻿{
   "server_base_url": "http://8.140.240.43:8000",
   "device_id": "atlas_001",
   "device_name": "心理测评设备01",
@@ -15,12 +15,16 @@
   "session_poll_interval": 2,
   "session_poll_timeout": 2.5,
   "camera_index": 0,
-  "width": 640,
-  "height": 480,
+  "width": 1280,
+  "height": 720,
+  "detect_target": 384,
+  "face_detector": "yunet",
+  "yunet_model": "models/yunet_640.om",
+  "face_padding": 0.05,
   "rotate": 0,
   "mirror": false,
-  "sample_fps": 5.0,
-  "infer_interval": 0.5,
+  "sample_fps": 30.0,
+  "infer_interval": 0.05,
   "token_file": "config/device_token.json",
   "log_file": "logs/cloud_device.log"
 }
