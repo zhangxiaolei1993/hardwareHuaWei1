@@ -20,7 +20,7 @@ class AppConfig:
 
     def __init__(self, path=DEFAULT_CONFIG):
         self.config_path = path
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             cfg = json.load(f)
         self.server_base_url = cfg["server_base_url"].rstrip("/")
         self.device_id = cfg["device_id"]
